@@ -1,6 +1,7 @@
 __author__ = 'nandi_000'
 
 import collections
+import copy
 # When we place a second order where its more aggressive than the aggressive price, exec happens at exec price
 
 class Orderbook:
@@ -9,83 +10,65 @@ class Orderbook:
         self.Bid_Queue = {} #Heap is efficient in this case
         self.Ask_Queue = {}
         self.Order_Map = {}
+        self.Updates = []
+
 
     # Returns executions, market data update
     def onOrder(self, Client_Order ):
         self.Order_Map[ Client_Order.Order_Id ] = Client_Order
-        Modified_Orders = []
+        Updated_Orders = {}
         Is_Order_Filled = False
 
         if( Client_Order.Side == "Buy" ):
-            Price_Points = list( self.Ask_Queue.keys() )
-            Price_Points.sort() #Get all price points in ascending order
-            for Price in Price_Points:
-                if( Price > Client_Order.Price ):
-                    break
-                Queue = self.Ask_Queue[ Price ]
+            Aggressive_Queue = "Ask_Queue"
+            Passive_Queue = "Bid_Queue"
+        else:
+            Aggressive_Queue = "Bid_Queue"
+            Passive_Queue = "Ask_Queue"
 
-                #Very Suboptimal, use queues
-                while( len( Queue ) ):
-                    Existing_Order = Queue[0]
-                    if( Existing_Order.Remaining_Quantity() >= Client_Order.Remaining_Quantity() ):
-                        Is_Order_Filled = True
-                        Remaining_Quantity = Client_Order.Remaining_Quantity()
-                        Existing_Order.Executed += Remaining_Quantity
-                        Client_Order.Executed += Remaining_Quantity
-                        if( Existing_Order.Remaining_Quantity() == 0 ):
-                            Queue.pop(0)
-                        break
-                    else:
-                        Remaining_Quantity = Existing_Order.Remaining_Quantity()
-                        Existing_Order.Executed += Remaining_Quantity
-                        Client_Order.Executed += Remaining_Quantity
-                        Queue.pop(0)
+        Price_Points = list( getattr( self, Aggressive_Queue ).keys() )
+        Price_Points.sort( reverse = ( Client_Order.Side == "Sell" ) ) #Get all price points in ascending order
+        for Price in Price_Points:
+            if( ( Client_Order.Side == "Buy" and Price > Client_Order.Price )
+                or ( Client_Order.Side == "Sell" and Price < Client_Order.Price ) ):
+                break
+            Queue = getattr( self, Aggressive_Queue )[ Price ]
 
+            #Very Suboptimal, use queues
+            while( len( Queue ) ):
+                Existing_Order = Queue[0]
+                if( Existing_Order.Remaining_Quantity() >= Client_Order.Remaining_Quantity() ):
+                    Is_Order_Filled = True
+                    Remaining_Quantity = Client_Order.Remaining_Quantity()
 
-                if( Is_Order_Filled ):
-                    break
+                else:
+                    Remaining_Quantity = Existing_Order.Remaining_Quantity()
 
-            if( Client_Order.Remaining_Quantity() == 0 ):
-                return
+                Existing_Order.Executed += Remaining_Quantity
+                Client_Order.Executed += Remaining_Quantity
+                Existing_Order.Executed_Notional += Remaining_Quantity * Existing_Order.Price
+                Client_Order.Executed_Notional += Remaining_Quantity * Existing_Order.Price
+                if( Existing_Order.Remaining_Quantity() == 0 ):
+                    Queue.pop(0)
 
-            if( Client_Order.Price not in self.Bid_Queue ):
-                self.Bid_Queue[ Client_Order.Price ] = []
-            self.Bid_Queue[ Client_Order.Price ].append( Client_Order )
+                #print( Client_Order.Order_Id )
+                #print( Existing_Order.Order_Id )
 
-        if( Client_Order.Side == "Sell" ):
-            Price_Points = list( self.Bid_Queue.keys() )
-            Price_Points.sort( reverse = True ) #Get all price points in ascending order
-            for Price in Price_Points:
-                if( Price < Client_Order.Price ):
-                    break
-                Queue = self.Bid_Queue[ Price ]
-
-                #Very Suboptimal, use queues
-                while( len( Queue ) ):
-                    Existing_Order = Queue[0]
-                    if( Existing_Order.Remaining_Quantity() >= Client_Order.Remaining_Quantity() ):
-                        Is_Order_Filled = True
-                        Remaining_Quantity = Client_Order.Remaining_Quantity()
-                        Existing_Order.Executed += Remaining_Quantity
-                        Client_Order.Executed += Remaining_Quantity
-                        if( Existing_Order.Remaining_Quantity() == 0 ):
-                            Queue.pop(0)
-                        break
-                    else:
-                        Remaining_Quantity = Existing_Order.Remaining_Quantity()
-                        Existing_Order.Executed += Remaining_Quantity
-                        Client_Order.Executed += Remaining_Quantity
-                        Queue.pop(0)
+                self.Updates.append( copy.deepcopy( Client_Order ) )
+                self.Updates.append( copy.deepcopy( Existing_Order ) )
 
                 if( Is_Order_Filled ):
                     break
 
-            if( Client_Order.Remaining_Quantity() == 0 ):
-                return
+            if( Is_Order_Filled ):
+                break
 
-            if( Client_Order.Price not in self.Ask_Queue ):
-                self.Ask_Queue[ Client_Order.Price ] = []
-            self.Ask_Queue[ Client_Order.Price ].append( Client_Order )
+        if( Client_Order.Remaining_Quantity() == 0 ):
+            return
+
+        if( Client_Order.Price not in getattr( self, Passive_Queue ) ):
+            getattr( self, Passive_Queue )[ Client_Order.Price ] = []
+        getattr( self, Passive_Queue )[ Client_Order.Price ].append( Client_Order )
 
 
 """

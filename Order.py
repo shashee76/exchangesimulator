@@ -38,6 +38,12 @@ class Order:
     def Remaining_Quantity(self):
         return( self.Quantity - self.Executed )
 
+    def Average_Price(self ):
+        return( self.Executed_Notional / self.Executed )
+
+    def Print_Order(self):
+        for attr in self.attributes:
+            print( attr, " : ", getattr( self, attr ) )
 
 #a = Order()
 #b = a.toJson()
