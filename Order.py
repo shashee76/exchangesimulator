@@ -13,7 +13,6 @@ class Order:
                  Executed = 0 ):
 
         self.Symbol = Symbol
-        
         self.Quantity = Quantity
         self.Price = Price
         self.Sender_Id = Sender_Id
